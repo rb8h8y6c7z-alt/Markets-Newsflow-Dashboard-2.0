@@ -201,6 +201,54 @@ function compactNumber(value) {
   return String(Math.round(value));
 }
 
+const yahooSymbols = {
+  "^spx": "^GSPC",
+  "^ndq": "^NDX",
+  "^dji": "^DJI",
+  "^ukx": "^FTSE",
+  "^dax": "^GDAXI",
+  "^cac": "^FCHI",
+  "^nkx": "^N225",
+  "^hsi": "^HSI",
+  "^sx5e": "^STOXX50E",
+  "^mcx": "^FTMC",
+  "^bvsp": "^BVSP",
+  "^nse50": "^NSEI",
+  "^aord": "^AORD",
+  "^tpx": "^TOPX",
+  "^rui": "^RUI",
+  "^ruj": "^RUJ",
+  "^tnx": "^TNX",
+  "eurusd": "EURUSD=X",
+  "gbpusd": "GBPUSD=X",
+  "usdjpy": "JPY=X",
+  "eurgbp": "EURGBP=X",
+  "usdcnh": "CNH=X",
+  "usdbrl": "BRL=X",
+  "usdinr": "INR=X",
+  "usdidx": "DX-Y.NYB",
+  "xauusd": "GC=F",
+  "btcusd": "BTC-USD",
+  "cl.f": "CL=F",
+  "0700.hk": "0700.HK",
+  "005930.kr": "005930.KS",
+  "brk-b.us": "BRK-B"
+};
+
+function yahooSymbolFor(symbol) {
+  const s = String(symbol || "").toLowerCase();
+  if (yahooSymbols[s]) return yahooSymbols[s];
+  if (s.endsWith(".us")) return s.replace(".us", "").toUpperCase();
+  if (s.endsWith(".uk")) return `${s.replace(".uk", "").toUpperCase()}.L`;
+  if (s.endsWith(".de")) return `${s.replace(".de", "").toUpperCase()}.DE`;
+  if (s.endsWith(".fr")) return `${s.replace(".fr", "").toUpperCase()}.PA`;
+  if (s.endsWith(".dk")) return `${s.replace(".dk", "").toUpperCase()}.CO`;
+  if (s.endsWith(".jp")) return `${s.replace(".jp", "")}.T`;
+  if (s.endsWith(".hk")) return `${s.replace(".hk", "").padStart(4, "0")}.HK`;
+  if (s.endsWith(".kr")) return `${s.replace(".kr", "")}.KS`;
+  return symbol;
+}
+
 async function fetchText(url, timeoutMs = 8000) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -235,9 +283,13 @@ function parseCsvLine(line) {
   return cells;
 }
 
-async function fetchQuote([name, symbol, tag, region = "GLOBAL"]) {
+function lastFinite(values = []) {
+  return [...values].reverse().find((value) => Number.isFinite(value)) ?? null;
+}
+
+async function fetchStooqQuote([name, symbol, tag, region = "GLOBAL"]) {
   const url = `https://stooq.com/q/l/?s=${encodeURIComponent(symbol)}&f=sd2t2ohlcv&h&e=csv`;
-  const csv = await fetchText(url, 7000);
+  const csv = await fetchText(url, process.env.RENDER ? 3200 : 7000);
   const lines = csv.trim().split(/\r?\n/);
   if (lines.length < 2) throw new Error("No quote row");
   const headers = parseCsvLine(lines[0]).map((header) => header.toLowerCase());
@@ -263,6 +315,57 @@ async function fetchQuote([name, symbol, tag, region = "GLOBAL"]) {
     timestamp: row.date && row.time && row.date !== "N/D" && row.time !== "N/D" ? new Date(`${row.date}T${row.time}Z`).toISOString() : null,
     source: "Stooq"
   };
+}
+
+async function fetchYahooQuote([name, symbol, tag, region = "GLOBAL"]) {
+  const yahooSymbol = yahooSymbolFor(symbol);
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?range=1d&interval=5m`;
+  const body = await fetchText(url, 4500);
+  const data = JSON.parse(body);
+  const result = data.chart?.result?.[0];
+  if (!result) throw new Error("No Yahoo quote available");
+  const meta = result.meta || {};
+  const quote = result.indicators?.quote?.[0] || {};
+  const closes = (quote.close || []).map(n).filter(Number.isFinite);
+  const opens = (quote.open || []).map(n).filter(Number.isFinite);
+  const highs = (quote.high || []).map(n).filter(Number.isFinite);
+  const lows = (quote.low || []).map(n).filter(Number.isFinite);
+  const volumes = (quote.volume || []).map(n).filter(Number.isFinite);
+  const price = n(meta.regularMarketPrice) ?? lastFinite(closes);
+  const open = n(meta.regularMarketOpen) ?? opens[0] ?? n(meta.previousClose) ?? null;
+  if (!Number.isFinite(price)) throw new Error("No Yahoo price available");
+  const change = Number.isFinite(open) ? price - open : null;
+  const changePct = Number.isFinite(change) && open ? (change / open) * 100 : null;
+  return {
+    name,
+    symbol: String(symbol).toUpperCase(),
+    tag,
+    region,
+    price,
+    open,
+    high: highs.length ? Math.max(...highs) : n(meta.regularMarketDayHigh),
+    low: lows.length ? Math.min(...lows) : n(meta.regularMarketDayLow),
+    volume: volumes.length ? volumes.reduce((sum, value) => sum + value, 0) : n(meta.regularMarketVolume),
+    change,
+    changePct,
+    timestamp: meta.regularMarketTime ? new Date(meta.regularMarketTime * 1000).toISOString() : new Date().toISOString(),
+    source: "Yahoo Finance"
+  };
+}
+
+async function fetchQuote(item) {
+  const sources = process.env.RENDER
+    ? [fetchYahooQuote, fetchStooqQuote]
+    : [fetchStooqQuote, fetchYahooQuote];
+  let lastError;
+  for (const source of sources) {
+    try {
+      return await source(item);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error("No quote available");
 }
 
 function getLens(value) {
@@ -485,6 +588,10 @@ async function dashboard(forceRefresh = false, lens = "global") {
     ...macroResult.failures.map((item) => ({ ...item, group: "macro" }))
   ];
   const allQuotes = [...indices, ...stocks, ...macro];
+  const quoteSources = allQuotes.reduce((counts, item) => {
+    counts[item.source] = (counts[item.source] || 0) + 1;
+    return counts;
+  }, {});
   const data = {
     version,
     generatedAt: new Date().toISOString(),
@@ -501,10 +608,11 @@ async function dashboard(forceRefresh = false, lens = "global") {
     dataQuality: {
       quoteFailures: failures,
       quoteFailureCount: failures.length,
-      quoteSuccessCount: allQuotes.length
+      quoteSuccessCount: allQuotes.length,
+      quoteSources
     },
     sourceNotes: [
-      "Market prices: Stooq public quote CSV; change is calculated from session open to latest/close where prior close is unavailable.",
+      "Market prices: Stooq public quote CSV with Yahoo Finance chart fallback; change is calculated from session open to latest/close where prior close is unavailable.",
       failures.length ? `${failures.length} quote(s) were unavailable and hidden from the widgets: ${failures.map((item) => item.name).join(", ")}.` : "All configured market quotes loaded successfully.",
       "Newsflow: FT, BBC Business, and Investing.com RSS.",
       "Public sources can be delayed, rate-limited, incomplete, or unavailable."

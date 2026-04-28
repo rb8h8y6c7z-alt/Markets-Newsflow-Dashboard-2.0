@@ -57,6 +57,6 @@ When you want to update the shared version:
 
 ## Notes
 
-No API keys are required. The app uses public quote and RSS sources, so data can be delayed, incomplete, rate-limited, or temporarily unavailable.
+No API keys are required. The app uses public quote and RSS sources, so data can be delayed, incomplete, rate-limited, or temporarily unavailable. On Render, the app will try Yahoo Finance chart data first for prices, then Stooq as a fallback.
 
 On Render's free tier, the first visit after a quiet period can be slow because Render has to wake the service up. After that first wake-up, refreshes should normally be faster.

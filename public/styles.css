@@ -474,6 +474,18 @@ body[data-density="max"] .feed-item {
   font-size: 0.7rem;
 }
 
+.lookup-issue {
+  margin: 0;
+  border: 1px solid rgba(255, 77, 61, 0.42);
+  border-radius: 4px;
+  padding: 3px 4px;
+  background: rgba(255, 77, 61, 0.08);
+  color: #ffcf70;
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
 .lookup-news {
   display: grid;
   gap: 2px;

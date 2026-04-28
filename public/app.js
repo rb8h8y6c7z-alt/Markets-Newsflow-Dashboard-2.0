@@ -19,6 +19,7 @@ const fmtPrice = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 2 });
 const fmtPct = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
 const regions = ["AMERICAS", "EMEA", "APAC", "GLOBAL"];
 const packedContainers = [indices, stocks, macro, winners, losers, news, radar];
+let dashboardIssue = "";
 
 function price(value) {
   return Number.isFinite(value) ? fmtPrice.format(value) : "n/a";
@@ -200,6 +201,19 @@ function renderSummary(data) {
   `;
 }
 
+function dashboardIssueFrom(data) {
+  const quality = data.dataQuality || {};
+  const failures = quality.quoteFailures || [];
+  const sources = quality.quoteSources
+    ? Object.entries(quality.quoteSources).map(([source, count]) => `${source}: ${count}`).join(" · ")
+    : "";
+  if (!quality.quoteSuccessCount) return "Pricing feed issue: no market quotes loaded. Check Render logs and public data-source access.";
+  if (failures.length) {
+    return `Pricing feed warning: ${failures.length} quote(s) unavailable (${failures.map((item) => item.name).slice(0, 4).join(", ")}${failures.length > 4 ? "..." : ""}). ${sources}`;
+  }
+  return sources ? `Pricing sources OK: ${sources}` : "";
+}
+
 async function load(forceRefresh = false) {
   updated.textContent = "Reassessing markets...";
   refreshButton.disabled = true;
@@ -220,6 +234,7 @@ async function load(forceRefresh = false) {
     renderRadar(data.eventRadar);
     renderRegionalNews(data.regionalNews);
     repackDashboard(data);
+    dashboardIssue = dashboardIssueFrom(data);
     notes.replaceChildren(...data.sourceNotes.map((note) => {
       const li = document.createElement("li");
       li.textContent = note;
@@ -227,6 +242,8 @@ async function load(forceRefresh = false) {
     }));
   } catch (error) {
     updated.textContent = error.message || "Could not load dashboard.";
+    dashboardIssue = `Dashboard load issue: ${error.message || "Could not load dashboard."}`;
+    lookupResult.innerHTML = `<p class="lookup-issue">${dashboardIssue}</p>`;
   } finally {
     refreshButton.disabled = false;
     lensSelect.disabled = false;
@@ -259,6 +276,7 @@ async function runLookup() {
         </div>
       </article>
       <div class="factor-grid"></div>
+      ${dashboardIssue ? `<p class="lookup-issue">${dashboardIssue}</p>` : ""}
       <p class="lookup-message">${data.message}</p>
       <div class="lookup-news"></div>
     `;
