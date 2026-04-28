@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: markets-news-dashboard
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: MARKETS_DASHBOARD_HOST
+        value: 0.0.0.0

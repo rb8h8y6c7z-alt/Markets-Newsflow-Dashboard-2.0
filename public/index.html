@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Markets & Newsflow Dashboard</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main>
+      <header class="topbar">
+        <strong>Markets Monitor</strong>
+        <label>
+          Lens
+          <select id="lens-select">
+            <option value="global">Global</option>
+            <option value="european">European</option>
+            <option value="uk">UK</option>
+            <option value="emerging-market">Emerging Market</option>
+            <option value="apac">APAC</option>
+            <option value="japan">Japan</option>
+            <option value="us-growth">US Growth</option>
+            <option value="us-technology">US Technology</option>
+            <option value="us-income-value">US Income and Value</option>
+          </select>
+        </label>
+        <span id="updated">Loading market tape...</span>
+        <button id="refresh" type="button">Refresh</button>
+      </header>
+
+      <section class="dashboard">
+        <div id="summary" class="summary-card"></div>
+
+        <section class="panel lookup-panel">
+          <div class="panel-head"><h2>Stock Lookup</h2><span>rough ticker/name</span></div>
+          <form id="lookup-form" class="lookup-form">
+            <input id="lookup-query" type="search" value="Nvidia" placeholder="e.g. NVDA, Apple, ASML" autocomplete="off" />
+            <button type="submit">Go</button>
+          </form>
+          <div id="lookup-result" class="lookup-result"></div>
+        </section>
+
+        <section class="panel wide">
+          <div class="panel-head"><h2>Major Indices</h2><span>Global tape</span></div>
+          <div id="indices" class="quote-grid"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><h2>Large Caps</h2><span>Mega-cap watch</span></div>
+          <div id="stocks" class="quote-list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><h2>Macro</h2><span>FX, gold, crypto</span></div>
+          <div id="macro" class="quote-list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><h2>Big Movers</h2><span>Session winners</span></div>
+          <div id="winners" class="quote-list compact"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><h2>Big Losers</h2><span>Session laggards</span></div>
+          <div id="losers" class="quote-list compact"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><h2>Event Radar</h2><span>News themes</span></div>
+          <div id="radar" class="radar-list"></div>
+        </section>
+
+        <section class="panel wide">
+          <div class="panel-head"><h2>Newsflow</h2><span>Regional market signals</span></div>
+          <div id="news" class="feed-list"></div>
+        </section>
+
+        <section class="panel notes-panel">
+          <div class="panel-head"><h2>Sources</h2><span>Freshness and caveats</span></div>
+          <ul id="notes"></ul>
+        </section>
+      </section>
+    </main>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
