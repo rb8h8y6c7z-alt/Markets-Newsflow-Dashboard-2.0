@@ -10,7 +10,6 @@ const host = process.env.MARKETS_DASHBOARD_HOST || (process.env.RENDER ? "0.0.0.
 const version = "0.1.0";
 const cache = new Map();
 const cacheTtlMs = 2 * 60 * 1000;
-const newsCacheTtlMs = 5 * 60 * 1000;
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -274,40 +273,18 @@ function lensConfig(value) {
   return lenses[getLens(value)];
 }
 
-function getLensKeyForConfig(config) {
-  return Object.entries(lenses).find(([, value]) => value === config)?.[0] || "global";
-}
-
-async function mapWithConcurrency(items, limit, worker) {
-  const results = [];
-  let index = 0;
-  async function next() {
-    const current = index;
-    index += 1;
-    if (current >= items.length) return;
-    results[current] = await worker(items[current], current);
-    await new Promise((resolve) => setTimeout(resolve, 90));
-    await next();
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, next));
-  return results;
-}
-
 async function fetchQuoteGroup(items) {
   const failures = [];
-  const settled = await mapWithConcurrency(items, 1, async (item) => {
+  const quotes = [];
+  for (const item of items) {
     const [name, symbol, tag, region = "GLOBAL"] = item;
     try {
-      return { quote: await fetchQuote(item) };
+      quotes.push(await fetchQuote(item));
     } catch {
-      return { failure: { name, symbol, tag, region } };
+      failures.push({ name, symbol, tag, region });
     }
-  });
-  const quotes = [];
-  settled.forEach((result) => {
-    if (result.quote) quotes.push(result.quote);
-    if (result.failure) failures.push(result.failure);
-  });
+    await new Promise((resolve) => setTimeout(resolve, 90));
+  }
   return { quotes, failures };
 }
 
@@ -358,16 +335,11 @@ function scoreNewsForLens(item, config) {
 }
 
 async function fetchNews(config = lenses.global) {
-  const cacheKey = `news:${getLensKeyForConfig(config)}`;
-  const cached = cache.get(cacheKey);
-  if (cached && Date.now() - cached.savedAt < newsCacheTtlMs) return cached.data;
   const settled = await Promise.allSettled(feeds.map(async (feed) => parseRss(await fetchText(feed.url), feed.name)));
-  const news = settled
+  return settled
     .flatMap((result) => (result.status === "fulfilled" ? result.value : []))
     .sort((a, b) => scoreNewsForLens(b, config) - scoreNewsForLens(a, config))
     .slice(0, 18);
-  cache.set(cacheKey, { savedAt: Date.now(), data: news });
-  return news;
 }
 
 function eventRadar(news) {
@@ -498,12 +470,11 @@ async function dashboard(forceRefresh = false, lens = "global") {
   const cached = cache.get(cacheKey);
   if (!forceRefresh && cached && Date.now() - cached.savedAt < cacheTtlMs) return { ...cached.data, cached: true };
 
-  const [news, indicesResult, stocksResult, macroResult] = await Promise.all([
-    fetchNews(config),
-    fetchQuoteGroup(config.indices),
-    fetchQuoteGroup(config.stocks),
-    fetchQuoteGroup(config.macro)
-  ]);
+  const newsPromise = fetchNews(config);
+  const indicesResult = await fetchQuoteGroup(config.indices);
+  const stocksResult = await fetchQuoteGroup(config.stocks);
+  const macroResult = await fetchQuoteGroup(config.macro);
+  const news = await newsPromise;
 
   const indices = indicesResult.quotes;
   const stocks = stocksResult.quotes;
